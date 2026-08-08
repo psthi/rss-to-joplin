@@ -69,6 +69,14 @@ Define your RSS feeds and notebook routing rules in `config.json`:
 }
 ```
 
+### 🗺️ How Automated Notebook Routing Works
+
+The script resolves where each article belongs using a 3-step intelligent matching engine:
+
+1. **Exact Feed Title Match**: Checks if the RSS feed title matches a key in `notebook_map` (e.g. `"Hacker News"` ➔ routes to `"Tech & Startups"`).
+2. **Keyword Search**: If no exact match exists, it checks if any keyword in `notebook_map` (e.g. `"security"`) appears in the **feed name**, **article title**, or **URL** (e.g. an article from `krebsonsecurity.com` ➔ routes to `"Cybersecurity"`).
+3. **Auto-Creation & Fallback**: Automatically creates the target notebook in Joplin if it doesn't exist yet. If no rules match, the article is routed to your `default_notebook` (e.g., `"RSS Articles"`).
+
 ---
 
 ## 🖥️ Usage Examples
