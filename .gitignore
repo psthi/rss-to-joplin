@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Configuration & Secrets
+.env
+config.json
+feed_sync.log
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store

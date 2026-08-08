@@ -1,0 +1,98 @@
+# RSS-to-Joplin 📰➡️📝
+
+> **Plug-and-Play Full-Text RSS Archiver & Intelligent Notebook Router for Joplin**
+
+[![Joplin](https://img.shields.io/badge/Joplin-Data_API-blue?logo=joplin)](https://joplinapp.org/)
+[![Python](https://img.shields.io/badge/Python-3.8+-green?logo=python)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+`rss-to-joplin` is an easy-to-use, zero-maintenance Python tool that automatically fetches RSS feeds, scrapes full article text using [Trafilatura](https://github.com/adbar/trafilatura), and archives them into categorized [Joplin](https://joplinapp.org/) notebooks via the Joplin Web Clipper Data API.
+
+*Keywords: Joplin RSS Sync, Joplin RSS Archiver, Joplin Data API, Full-Text RSS to Joplin, Self-Hosted News Reader for Joplin.*
+
+---
+
+## ⚡ 1-Minute Plug & Play Setup
+
+No complex setup or external tools required—just Python!
+
+```bash
+# 1. Clone & install dependencies
+git clone https://github.com/psthi/rss-to-joplin.git
+cd rss-to-joplin
+pip install -r requirements.txt
+
+# 2. Run with your Joplin Web Clipper Token and any RSS feed!
+python3 main.py --token YOUR_JOPLIN_TOKEN --feed https://news.ycombinator.com/rss
+```
+
+---
+
+## 🌟 Key Features
+
+- 🔌 **100% Plug-and-Play**: Built-in RSS parser (`feedparser`) and article scraper (`trafilatura`)—runs out of the box with zero third-party services.
+- 📖 **Full-Text Article Extraction**: Automatically bypasses truncated RSS snippets to fetch complete web articles, images, and formatting into clean Markdown.
+- 📂 **Automated Notebook Categorization**: Routes articles to specific Joplin notebooks based on RSS feed titles or keyword rules (e.g. *Tech News*, *Cybersecurity*).
+- 🔄 **Smart Update & Deduplication**: Checks existing notes and updates previews with full-text article markdown.
+- 🔒 **Privacy-First & Self-Hosted**: Runs 100% locally on your computer via Joplin's local Web Clipper API (`http://localhost:41184`).
+
+---
+
+## ⚙️ Configuration (Optional)
+
+### Option A: `.env` File
+Create a `.env` file in the project folder so you don't have to pass your token manually every time:
+
+```env
+JOPLIN_TOKEN=your_joplin_web_clipper_token_here
+JOPLIN_API_URL=http://localhost:41184
+DEFAULT_NOTEBOOK=RSS Articles
+```
+
+*(Retrieve your token in Joplin under Tools -> Options -> Web Clipper).*
+
+### Option B: `config.json`
+Define your RSS feeds and notebook routing rules in `config.json`:
+
+```json
+{
+  "default_notebook": "RSS Articles",
+  "feeds": [
+    "https://news.ycombinator.com/rss",
+    "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+  ],
+  "notebook_map": {
+    "Hacker News": "Tech & Startups",
+    "New York Times": "World News",
+    "security": "Cybersecurity"
+  }
+}
+```
+
+---
+
+## 🖥️ Usage Examples
+
+```bash
+# Process feeds defined in config.json
+python3 main.py
+
+# Process specific RSS feed URLs from command line
+python3 main.py --feed https://news.ycombinator.com/rss --feed https://krebsonsecurity.com/feed/
+
+# Run without full-text scraping (snippets only)
+python3 main.py --no-full-text
+```
+
+### Automation via Cron
+Run automatically every 6 hours by adding an entry to `crontab -e`:
+
+```cron
+0 */6 * * * /usr/bin/python3 /path/to/rss-to-joplin/main.py >> /var/log/rss_joplin.log 2>&1
+```
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for details.

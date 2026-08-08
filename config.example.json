@@ -1,0 +1,12 @@
+{
+  "default_notebook": "RSS Articles",
+  "feeds": [
+    "https://news.ycombinator.com/rss",
+    "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+  ],
+  "notebook_map": {
+    "Hacker News": "Tech & Startups",
+    "New York Times": "World News",
+    "security": "Cybersecurity"
+  }
+}
