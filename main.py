@@ -7,11 +7,13 @@ and syncs them into Joplin Notebooks via the Web Clipper REST API.
 
 import os
 import sys
+import re
 import json
 import argparse
 import requests
 import feedparser
 import trafilatura
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file if present
@@ -47,7 +49,7 @@ def get_or_create_notebook(api_url, token, name, cache):
         return cache[name]
 
     try:
-        res = requests.get(f"{api_url}/folders?token={token}").json()
+        res = requests.get(f"{api_url}/folders?token={token}", timeout=15).json()
         for folder in res.get("items", []):
             if folder.get("title").strip().lower() == name.strip().lower():
                 folder_id = folder.get("id")
@@ -58,7 +60,7 @@ def get_or_create_notebook(api_url, token, name, cache):
         sys.exit(1)
 
     # Create notebook if not found
-    res = requests.post(f"{api_url}/folders?token={token}", json={"title": name})
+    res = requests.post(f"{api_url}/folders?token={token}", json={"title": name}, timeout=15)
     if res.status_code == 200:
         folder_id = res.json().get("id")
         cache[name] = folder_id
@@ -80,20 +82,44 @@ def resolve_target_notebook(feed_title, item_title, url, default_notebook, noteb
 
     return default_notebook
 
+def clean_markdown_content(md_text, max_len=150000):
+    """Sanitizes markdown content by stripping massive base64 images and capping size to prevent Joplin sync timeouts (Error 499)."""
+    if not md_text:
+        return md_text
+    
+    # Remove inline base64 data image URIs: ![alt](data:image/...;base64,...)
+    md_cleaned = re.sub(r'!\[([^\]]*)\]\(data:image/[^;]+;base64,[A-Za-z0-9+/=]+\)', r'*[Inline image omitted]*', md_text)
+    md_cleaned = re.sub(r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+', '', md_cleaned)
+    
+    if len(md_cleaned) > max_len:
+        md_cleaned = md_cleaned[:max_len] + "\n\n*(...Article truncated due to size limit...)*"
+        
+    return md_cleaned
+
 def fetch_full_article_markdown(url):
     """Downloads webpage at URL and extracts full article body in Markdown format."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 10 Pro XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Ch-Ua": '"Not)A;Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
+        "Sec-Ch-Ua-Mobile": "?1",
+        "Sec-Ch-Ua-Platform": '"Android"',
+        "Upgrade-Insecure-Requests": "1"
+    }
     try:
-        downloaded = trafilatura.fetch_url(url)
-        if downloaded:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
             extracted = trafilatura.extract(
-                downloaded, 
+                response.text, 
                 output_format='markdown',
+                target_language='en',
                 include_links=True,
                 include_images=True,
                 include_formatting=True
             )
             if extracted and len(extracted.strip()) > 100:
-                return extracted
+                return clean_markdown_content(extracted)
     except Exception as e:
         print(f"  ⚠️ Could not fetch full article from {url}: {e}")
     return None
@@ -106,10 +132,20 @@ def fetch_entries_from_rss_url(feed_url):
     entries = []
     
     for entry in parsed.entries:
+        published_parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+        published_at = ""
+        if published_parsed:
+            try:
+                published_at = time.strftime("%m-%d-%Y", published_parsed)
+            except Exception:
+                published_at = entry.get("published", entry.get("updated", ""))
+        else:
+            published_at = entry.get("published", entry.get("updated", ""))
+            
         entries.append({
             "title": entry.get("title", "Untitled Article"),
             "url": entry.get("link", ""),
-            "published_at": entry.get("published", entry.get("updated", "")),
+            "published_at": published_at,
             "summary": entry.get("summary", entry.get("description", "")),
             "feed_title": feed_title
         })
@@ -120,7 +156,7 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
 
     # 1. Verify Joplin API connection
     try:
-        requests.get(f"{api_url}/folders?token={token}").json()
+        requests.get(f"{api_url}/folders?token={token}", timeout=15).json()
     except requests.exceptions.ConnectionError:
         print(f"❌ Error: Unable to connect to Joplin API at {api_url}.")
         print("   Please make sure Joplin Desktop is running and Web Clipper service is enabled.")
@@ -142,16 +178,17 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
             target_notebook_name = resolve_target_notebook(feed_title, title, url, default_notebook, notebook_map)
             notebook_id = get_or_create_notebook(api_url, token, target_notebook_name, notebook_cache)
 
-            # Fetch existing notes in target notebook
-            existing_notes = requests.get(f"{api_url}/folders/{notebook_id}/notes?token={token}").json()
-            existing_map = {n.get("title"): n.get("id") for n in existing_notes.get("items", [])}
-
-            print(f"Processing: {title[:60]}... -> Notebook: '{target_notebook_name}'")
-
             # Extract full article content if enabled
             full_md = None
             if fetch_full_articles and url:
                 full_md = fetch_full_article_markdown(url)
+
+            # If full-text extraction failed or returned non-English (which returns None),
+            # check if we should skip importing if we only want English articles.
+            # (If full_md is None and we parsed a non-English page, discard it).
+            if fetch_full_articles and not full_md:
+                print(f"  ⚠️ Skipping {title[:40]}... (not retrieved or non-English).")
+                continue
 
             final_content = full_md if full_md else rss_snippet
 
@@ -161,11 +198,21 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
                 body += f"*Published: {published}*\n\n"
             body += f"---\n\n{final_content}"
 
-            if title in existing_map:
-                note_id = existing_map[title]
+            # Query Joplin search API for existing note by source URL to avoid paging limitations
+            note_id = None
+            if url:
+                # Clean URL for search query (escape special characters if needed, or query exact)
+                search_url = url.replace('"', '\\"')
+                search_resp = requests.get(f"{api_url}/search?query=source_url:\"{search_url}\"&token={token}", timeout=15).json()
+                items = search_resp.get("items", [])
+                if items:
+                    note_id = items[0].get("id")
+
+            if note_id:
                 resp = requests.put(
                     f"{api_url}/notes/{note_id}?token={token}",
-                    json={"body": body, "source_url": url}
+                    json={"body": body, "title": title, "parent_id": notebook_id, "source_url": url},
+                    timeout=15
                 )
                 if resp.status_code == 200:
                     total_updated += 1
@@ -177,7 +224,7 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
                     "parent_id": notebook_id,
                     "source_url": url
                 }
-                resp = requests.post(f"{api_url}/notes?token={token}", json=note_data)
+                resp = requests.post(f"{api_url}/notes?token={token}", json=note_data, timeout=15)
                 if resp.status_code == 200:
                     total_synced += 1
                     print("  ✓ Saved new full-text article to Joplin.")

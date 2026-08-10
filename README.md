@@ -101,6 +101,17 @@ Run automatically every 6 hours by adding an entry to `crontab -e`:
 
 ---
 
+## 🛠️ Troubleshooting & Joplin Sync Notes
+
+### `Error 499: Client Closed Request` during Remote Sync
+If Joplin shows `Error 499: Client Closed Request` when synchronizing with Nextcloud, Joplin Server, or WebDAV:
+1. **Oversized Note Payload Prevention**: `rss-to-joplin` automatically strips heavy inline base64 image strings (`data:image/...;base64,...`) and caps max note length to prevent ballooning note sizes that overload WebDAV/Nginx connections.
+2. **Re-sync in Joplin**: Simply click **Synchronise** again in Joplin Desktop. Joplin tracks item sync state independently and will resume uploading remaining notes.
+3. **Adjust Reverse Proxy Timeouts**: If self-hosting Joplin Server or Nextcloud behind Nginx, increase `proxy_read_timeout` and `fastcgi_read_timeout` to `600s`.
+4. **Snippet-Only Mode**: If a specific feed creates massive articles, run with `--no-full-text` to import lightweight RSS snippets only.
+
+---
+
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for details.
