@@ -11,11 +11,11 @@ Use this skill to sync, configure, debug, or automate the `rss-to-joplin` workfl
 
 ## 📁 Project Structure
 
-All workflow development files reside in [`/home/philip/projects/rss-to-joplin`](file:///home/philip/projects/rss-to-joplin):
-- [`main.py`](file:///home/philip/projects/rss-to-joplin/main.py): The main Python syncing engine.
-- [`config.example.json`](file:///home/philip/projects/rss-to-joplin/config.example.json): Template for feeding sources and routing configuration.
-- [`.env.example`](file:///home/philip/projects/rss-to-joplin/.env.example): Environment variable configuration template.
-- [`requirements.txt`](file:///home/philip/projects/rss-to-joplin/requirements.txt): Python dependencies (`feedparser`, `trafilatura`, `requests`, `python-dotenv`).
+All workflow development files reside in this repository:
+- [`main.py`](main.py): The main Python syncing engine.
+- [`config.example.json`](config.example.json): Template for feeding sources and routing configuration.
+- [`.env.example`](.env.example): Environment variable configuration template.
+- [`requirements.txt`](requirements.txt): Python dependencies (`feedparser`, `trafilatura`, `requests`, `python-dotenv`).
 
 ---
 
@@ -41,14 +41,14 @@ python3 main.py --no-full-text
 ### Automation via Crontab
 To sync feeds in the background, configure a cron job using `crontab -e`:
 ```cron
-0 */6 * * * /usr/bin/python3 /home/philip/projects/rss-to-joplin/main.py >> /var/log/rss_joplin.log 2>&1
+0 */6 * * * /usr/bin/python3 /path/to/rss-to-joplin/main.py >> /var/log/rss_joplin.log 2>&1
 ```
 
 ---
 
 ## ⚙️ Configuration File (`config.json`)
 
-Configure source feeds and matching rules in `/home/philip/projects/rss-to-joplin/config.json`:
+Configure source feeds and matching rules in `config.json`:
 
 ```json
 {
