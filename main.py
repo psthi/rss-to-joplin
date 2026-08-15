@@ -124,6 +124,97 @@ def fetch_full_article_markdown(url):
         print(f"  ⚠️ Could not fetch full article from {url}: {e}")
     return None
 
+def get_article_summary_and_tags(content, title):
+    """Uses LLM (Ollama or Cloud provider via environment variables) to summarize the article and classify it into a category."""
+    # Limit content length to prevent slow processing / VRAM overflow
+    excerpt = content[:3000]
+    prompt = f"""You are a professional research assistant cataloging web articles for a digital library.
+Analyze the following article text.
+
+Title: {title}
+
+Article:
+{excerpt}
+
+Return a JSON object containing:
+1. "summary": A concise, bulleted TL;DR of the key points (maximum 3 bullet points, markdown list format).
+2. "category": A string classifying this article. Choose EXACTLY one category from this list: ["news", "tech", "ai", "health"].
+
+Output ONLY the JSON object. Do not include markdown code blocks or preambles.
+"""
+    try:
+        api_url = os.environ.get("LLM_API_URL", "http://localhost:11434/v1/chat/completions")
+        model = os.environ.get("LLM_MODEL", "phi3.5:latest")
+        api_key = os.environ.get("LLM_API_KEY", "")
+
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        is_native_ollama = "/api/chat" in api_url
+
+        if is_native_ollama:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 250
+                },
+                "stream": False
+            }
+        else:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.1,
+                "max_tokens": 250
+            }
+
+        res = requests.post(api_url, json=payload, headers=headers, timeout=120)
+        if res.status_code == 200:
+            resp_data = res.json()
+            if is_native_ollama:
+                raw_text = resp_data.get("message", {}).get("content", "").strip()
+            else:
+                choices = resp_data.get("choices", [])
+                raw_text = choices[0].get("message", {}).get("content", "").strip() if choices else ""
+            
+            # Clean markdown code fences if model returned them
+            if raw_text.startswith("```"):
+                raw_text = re.sub(r"^```(?:json)?\n|\n```$", "", raw_text, flags=re.MULTILINE).strip()
+            
+            parsed = json.loads(raw_text)
+            category = parsed.get("category", "tech").lower()
+            # Fallback validation to ensure it matches allowed list
+            if category not in ["news", "tech", "ai", "health"]:
+                category = "tech"
+            return parsed.get("summary", ""), [category]
+    except Exception as e:
+        print(f"  ⚠️ LLM summary/tag extraction failed: {e}")
+    return "", ["tech"]
+
+def add_tags_to_note(api_url, token, note_id, tags):
+    """Creates tags in Joplin and associates them with a note."""
+    for tag_name in tags:
+        tag_name = tag_name.strip().lower()
+        if not tag_name:
+            continue
+        try:
+            # 1. Create/Find tag in Joplin
+            res = requests.post(f"{api_url}/tags?token={token}", json={"title": tag_name}, timeout=15)
+            if res.status_code == 200:
+                tag_id = res.json().get("id")
+                # 2. Link tag to note
+                requests.post(f"{api_url}/tags/{tag_id}/notes?token={token}", json={"id": note_id}, timeout=15)
+        except Exception as e:
+            print(f"  ⚠️ Failed to attach tag '{tag_name}': {e}")
+
+
 def fetch_entries_from_rss_url(feed_url):
     """Fetches and parses entries directly from an RSS feed URL using feedparser."""
     print(f"📡 Fetching RSS feed: {feed_url}")
@@ -151,7 +242,7 @@ def fetch_entries_from_rss_url(feed_url):
         })
     return feed_title, entries
 
-def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map, fetch_full_articles):
+def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map, fetch_full_articles, use_llm=False):
     notebook_cache = {}
 
     # 1. Verify Joplin API connection
@@ -196,7 +287,20 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
             body = f"# [{title}]({url})\n\n" if url else f"# {title}\n\n"
             if published:
                 body += f"*Published: {published}*\n\n"
-            body += f"---\n\n{final_content}"
+            
+            tags = []
+            if use_llm and final_content:
+                print(f"  🧠 Generating local AI summary and tags using phi3.5...")
+                summary, extracted_tags = get_article_summary_and_tags(final_content, title)
+                if summary:
+                    if isinstance(summary, list):
+                        summary_text = "\n".join(summary)
+                    else:
+                        summary_text = str(summary)
+                    body += f"## TL;DR Summary\n{summary_text}\n\n---\n\n"
+                tags = extracted_tags
+
+            body += final_content
 
             # Query Joplin search API for existing note by source URL to avoid paging limitations
             note_id = None
@@ -217,6 +321,8 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
                 if resp.status_code == 200:
                     total_updated += 1
                     print("  ✓ Updated existing Joplin note with full article body.")
+                    if tags:
+                        add_tags_to_note(api_url, token, note_id, tags)
             else:
                 note_data = {
                     "title": title,
@@ -227,7 +333,10 @@ def sync_rss_to_joplin(api_url, token, default_notebook, feed_urls, notebook_map
                 resp = requests.post(f"{api_url}/notes?token={token}", json=note_data, timeout=15)
                 if resp.status_code == 200:
                     total_synced += 1
+                    created_note_id = resp.json().get("id")
                     print("  ✓ Saved new full-text article to Joplin.")
+                    if tags and created_note_id:
+                        add_tags_to_note(api_url, token, created_note_id, tags)
 
     print(f"\n🎉 Finished! Created {total_synced} new notes, updated {total_updated} existing notes.")
 
@@ -239,6 +348,7 @@ def main():
     parser.add_argument("--default-notebook", default=os.environ.get("DEFAULT_NOTEBOOK", ""), help="Default Joplin notebook name")
     parser.add_argument("--config", default="config.json", help="Path to config.json file")
     parser.add_argument("--no-full-text", action="store_true", help="Disable Trafilatura full article scraping")
+    parser.add_argument("--summary", action="store_true", help="Generate local AI summaries and tags using Ollama phi3.5")
 
     args = parser.parse_args()
 
@@ -262,7 +372,8 @@ def main():
         default_notebook=default_notebook,
         feed_urls=feed_urls,
         notebook_map=notebook_map,
-        fetch_full_articles=not args.no_full_text
+        fetch_full_articles=not args.no_full_text,
+        use_llm=args.summary
     )
 
 if __name__ == "__main__":

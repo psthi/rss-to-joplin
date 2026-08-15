@@ -32,7 +32,9 @@ python3 main.py --token YOUR_JOPLIN_TOKEN --feed https://news.ycombinator.com/rs
 
 - 🔌 **100% Plug-and-Play**: Built-in RSS parser (`feedparser`) and article scraper (`trafilatura`)—runs out of the box with zero third-party services.
 - 📖 **Full-Text Article Extraction**: Automatically bypasses truncated RSS snippets to fetch complete web articles, images, and formatting into clean Markdown.
+- 🧠 **AI-Powered Summarization & Tagging**: Generates concise TL;DR bullet points and categorizes/tags articles using either a local LLM (e.g. Ollama with `phi3.5`) or cloud providers (e.g. OpenAI `gpt-4o-mini`).
 - 📂 **Automated Notebook Categorization**: Routes articles to specific Joplin notebooks based on RSS feed titles or keyword rules (e.g. *Tech News*, *Cybersecurity*).
+- 🏷️ **Joplin Tag Integration**: Assigns AI-extracted tags directly to Joplin notes for easier search and organization.
 - 🔄 **Smart Update & Deduplication**: Checks existing notes and updates previews with full-text article markdown.
 - 🔒 **Privacy-First & Self-Hosted**: Runs 100% locally on your computer via Joplin's local Web Clipper API (`http://localhost:41184`).
 
@@ -47,6 +49,17 @@ Create a `.env` file in the project folder so you don't have to pass your token 
 JOPLIN_TOKEN=your_joplin_web_clipper_token_here
 JOPLIN_API_URL=http://localhost:41184
 DEFAULT_NOTEBOOK=RSS Articles
+
+# LLM Configuration (For RSS Article Summarization and Tagging)
+# To use local Ollama:
+LLM_API_URL=http://localhost:11434/v1/chat/completions
+LLM_MODEL=phi3.5:latest
+LLM_API_KEY=
+
+# To use OpenAI cloud:
+# LLM_API_URL=https://api.openai.com/v1/chat/completions
+# LLM_MODEL=gpt-4o-mini
+# LLM_API_KEY=your_openai_api_key_here
 ```
 
 *(Retrieve your token in Joplin under Tools -> Options -> Web Clipper).*
@@ -84,6 +97,9 @@ The script resolves where each article belongs using a 3-step intelligent matchi
 ```bash
 # Process feeds defined in config.json
 python3 main.py
+
+# Process feeds and generate local/cloud AI summaries and tags
+python3 main.py --summary
 
 # Process specific RSS feed URLs from command line
 python3 main.py --feed https://news.ycombinator.com/rss --feed https://krebsonsecurity.com/feed/
