@@ -31,8 +31,11 @@ python3 main.py
 # Override with a specific RSS feed URL
 python3 main.py --feed https://news.ycombinator.com/rss
 
+# Run with AI summarization and tagging enabled (Ollama/Cloud)
+python3 main.py --summary
+
 # Process multiple feeds via command line
-python3 main.py --feed https://news.ycombinator.com/rss --feed https://krebsonsecurity.com/feed/
+python3 main.py --feed https://news.ycombinator.com/rss --feed https://krebsonsecurity.com/feed/ --summary
 
 # Run in lightweight snippet mode (skips full-text scraping)
 python3 main.py --no-full-text
@@ -78,5 +81,8 @@ Notebook routing checks three conditions:
 
 - **Deduplication via Search API**: Instead of querying folders line-by-line, the script queries Joplin's Search API (`/search?query=source_url:"..."`) to check if an article URL already exists. This avoids paging limitations and speeds up execution.
 - **Base64 & Size Sanitization**: To prevent `Error 499: Client Closed Request` errors when Joplin syncs to remote servers (Nextcloud/WebDAV), the workflow automatically strips inline base64 images and truncates notes exceeding `150,000` characters.
+- **AI-Powered Summarization & Tagging**: When run with `--summary`, the script sends the first 3,000 characters of the scraped article to an LLM (Ollama or cloud via standard OpenAI compatible API). The LLM yields a JSON summary and a matching tag/category (e.g. `tech`, `news`, `ai`, `health`).
+- **Joplin Tag Integration**: Assigns AI-extracted tags directly to Joplin notes for easier search and organization, avoiding manual metadata curation.
 - **Language Filtering**: Scrapes article text targeting English (`target_language='en'`). If the content is in a foreign language or can't be scraped, it skips syncing that article when in full-text mode.
 - **Mobile Scraping User-Agent**: Uses a custom Android/Pixel 10 Pro XL User-Agent to bypass standard scraper blockers.
+
